@@ -3,9 +3,13 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashMap;
 
-#[derive(Debug, PartialEq)]
+/// A compiler warning
+#[derive(Debug, PartialEq, Clone)]
 pub struct Warning {
+    /// Name of the warning, minus the initial "-W"
     name: String,
+
+    /// File the warning appears in
     file: std::path::PathBuf,
 }
 
@@ -105,6 +109,43 @@ pub fn make_warning_counts(warnings: &HashMap<String, i16>, top_n: usize, use_to
     results + &extra + &total_line
 }
 
+// Helper function from https://stackoverflow.com/a/45145246
+#[cfg(test)]
+macro_rules! vec_of_strings {
+    // match a list of expressions separated by comma:
+    ($($str:expr),*) => ({
+        // create a Vec with this list of expressions,
+        // calling String::from on each:
+        vec![$(String::from($str),)*] as Vec<String>
+    });
+}
+
+#[cfg(test)]
+fn make_test_warnings() -> Vec<Warning> {
+    lazy_static! {
+        static ref RESULT: Vec<Warning> = Vec::from([
+            Warning {
+                file: std::path::PathBuf::from("/path/to/dir1/file1.c"),
+                name: String::from("bad-thing"),
+            },
+            Warning {
+                file: std::path::PathBuf::from("/path/to/dir2/file1.c"),
+                name: String::from("dont-like-this"),
+            },
+            Warning {
+                file: std::path::PathBuf::from("/path/to/dir2/file2.c"),
+                name: String::from("horrible-stuff"),
+            },
+            Warning {
+                file: std::path::PathBuf::from("/path/to/dir2/file2.c"),
+                name: String::from("horrible-stuff"),
+            },
+        ]);
+    }
+
+    RESULT.to_vec()
+}
+
 #[test]
 fn find_a_warning() -> Result<()> {
     let result = find_warnings(
@@ -129,49 +170,14 @@ fn find_a_warning() -> Result<()> {
 ",
     )?;
 
-    let expected = [
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file1.c"),
-            name: String::from("bad-thing"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file1.c"),
-            name: String::from("dont-like-this"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file2.c"),
-            name: String::from("horrible-stuff"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file2.c"),
-            name: String::from("horrible-stuff"),
-        },
-    ];
+    let expected = make_test_warnings();
     assert_eq!(result, expected);
     Ok(())
 }
 
 #[test]
 fn count_warnings() -> Result<()> {
-    let warnings = [
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file1.c"),
-            name: String::from("bad-thing"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file1.c"),
-            name: String::from("dont-like-this"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file2.c"),
-            name: String::from("horrible-stuff"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file2.c"),
-            name: String::from("horrible-stuff"),
-        },
-    ];
-    let warning_counts = count_warning_types(&warnings);
+    let warning_counts = count_warning_types(&make_test_warnings());
 
     let expected_counts = HashMap::from([
         ("bad-thing".to_string(), 1),
@@ -185,29 +191,12 @@ fn count_warnings() -> Result<()> {
 
 #[test]
 fn count_files() -> Result<()> {
-    let warnings = [
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file1.c"),
-            name: String::from("bad-thing"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file1.c"),
-            name: String::from("dont-like-this"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file2.c"),
-            name: String::from("horrible-stuff"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/file2.c"),
-            name: String::from("horrible-stuff"),
-        },
-    ];
-    let warning_counts = count_warning_files(&warnings);
+    let warning_counts = count_warning_files(&make_test_warnings());
 
     let expected_counts = HashMap::from([
-        ("/path/to/file1.c".to_string(), 2),
-        ("/path/to/file2.c".to_string(), 2),
+        ("/path/to/dir1/file1.c".to_string(), 1),
+        ("/path/to/dir2/file1.c".to_string(), 1),
+        ("/path/to/dir2/file2.c".to_string(), 2),
     ]);
 
     assert_eq!(warning_counts, expected_counts);
@@ -216,25 +205,7 @@ fn count_files() -> Result<()> {
 
 #[test]
 fn count_directories() -> Result<()> {
-    let warnings = [
-        Warning {
-            file: std::path::PathBuf::from("/path/to/dir1/file1.c"),
-            name: String::from("bad-thing"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/dir2/file1.c"),
-            name: String::from("dont-like-this"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/dir2/file2.c"),
-            name: String::from("horrible-stuff"),
-        },
-        Warning {
-            file: std::path::PathBuf::from("/path/to/dir2/file2.c"),
-            name: String::from("horrible-stuff"),
-        },
-    ];
-    let warning_counts = count_warning_directories(&warnings);
+    let warning_counts = count_warning_directories(&make_test_warnings());
 
     let expected_counts = HashMap::from([
         ("/path/to/dir1".to_string(), 1),
