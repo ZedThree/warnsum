@@ -11,12 +11,29 @@ pub struct Warning {
 
     /// File the warning appears in
     file: std::path::PathBuf,
+
+    /// Set of potentially interesting keywords from line that raised warning
+    keywords: Vec<String>,
 }
 
-pub fn find_warnings(content: &str) -> Result<Vec<Warning>> {
+fn make_keywords(text: &str, keyword_len: usize) -> Vec<String> {
     lazy_static! {
-        static ref WARN_RE: Regex =
-            Regex::new(r"(?P<file>.*):\d+:\d+: warning:.*\[-W(?P<name>.*)\]").unwrap();
+        static ref WORDS_RE: Regex = Regex::new(r"\b[a-zA-Z_]\w+\b").unwrap();
+    }
+
+    WORDS_RE
+        .find_iter(text)
+        .filter(|mat| mat.as_str().len() >= keyword_len)
+        .map(|mat| mat.as_str().to_string())
+        .collect()
+}
+
+pub fn find_warnings(content: &str, keyword_len: usize) -> Result<Vec<Warning>> {
+    lazy_static! {
+        static ref WARN_RE: Regex = Regex::new(
+            r"(?P<file>.*):\d+:\d+: warning:.*\[-W(?P<name>.*)\](?P<text>\n\s+\d+ \|.*)?"
+        )
+        .unwrap();
     }
 
     let result = WARN_RE
@@ -24,6 +41,10 @@ pub fn find_warnings(content: &str) -> Result<Vec<Warning>> {
         .map(|cap| Warning {
             name: String::from(&cap["name"]),
             file: std::path::PathBuf::from(&cap["file"]),
+            keywords: match cap.name("text") {
+                Some(capture) => make_keywords(capture.as_str(), keyword_len),
+                _ => Vec::new(),
+            },
         })
         .collect::<Vec<_>>();
 
@@ -66,7 +87,26 @@ pub fn count_warning_directories(warnings: &[Warning]) -> HashMap<String, i16> {
     })
 }
 
-pub fn make_warning_counts(warnings: &HashMap<String, i16>, top_n: usize, use_total_items: bool) -> String {
+pub fn count_warning_keywords(warnings: &[Warning]) -> HashMap<String, i16> {
+    let keywords = warnings
+        .iter()
+        .map(|warning| &warning.keywords)
+        .flatten()
+        .collect::<Vec<&String>>();
+
+    let mut result = HashMap::new();
+    for keyword in keywords {
+        *result.entry(keyword.clone()).or_default() += 1;
+    }
+
+    result
+}
+
+pub fn make_warning_counts(
+    warnings: &HashMap<String, i16>,
+    top_n: usize,
+    use_total_items: bool,
+) -> String {
     if warnings.is_empty() {
         return String::new();
     }
@@ -127,18 +167,22 @@ fn make_test_warnings() -> Vec<Warning> {
             Warning {
                 file: std::path::PathBuf::from("/path/to/dir1/file1.c"),
                 name: String::from("bad-thing"),
+                keywords: vec_of_strings!["horrible", "foo", "zing", "zimb"],
             },
             Warning {
                 file: std::path::PathBuf::from("/path/to/dir2/file1.c"),
                 name: String::from("dont-like-this"),
+                keywords: vec_of_strings!["zing", "zimb", "foo", "zang"],
             },
             Warning {
                 file: std::path::PathBuf::from("/path/to/dir2/file2.c"),
                 name: String::from("horrible-stuff"),
+                keywords: vec_of_strings!["horrible", "stuff"],
             },
             Warning {
                 file: std::path::PathBuf::from("/path/to/dir2/file2.c"),
                 name: String::from("horrible-stuff"),
+                keywords: vec_of_strings!["horrible", "stuff"],
             },
         ]);
     }
@@ -152,22 +196,23 @@ fn find_a_warning() -> Result<()> {
         "Some warnings
 [  1%] Generating file1.c
 [  2%] Generating file2.c
-/path/to/file1.c: In function ‘func1’:
-/path/to/file1.c:235:36: warning: doing some bad thing [-Wbad-thing]
-  235 |     if (bad_thing) *foo = zing->bat.pazz.zimb;
-      |                                    ^~~~~
-/path/to/file1.c: In function ‘func2’:
-/path/to/file1.c:340:27: warning: don't like this [-Wdont-like-this]
-  340 |     zing->zapp.zoom &= (~zaff);
-      |                           ^~
-/path/to/file2.c: In function ‘func3’:
-/path/to/file2.c:697:16: warning: just horrible stuff [-Whorrible-stuff]
+/path/to/dir1/file1.c: In function ‘func1’:
+/path/to/dir1/file1.c:235:36: warning: doing some bad thing [-Wbad-thing]
+  235 |     if (horrible) *foo = zing->zimb;
+      |                                ^~~~~
+/path/to/dir2/file1.c: In function ‘func2’:
+/path/to/dir2/file1.c:340:27: warning: don't like this [-Wdont-like-this]
+  340 |     zing->zimb &= (~foo.zang);
+      |                     ^~
+/path/to/dir2/file2.c: In function ‘func3’:
+/path/to/dir2/file2.c:697:16: warning: just horrible stuff [-Whorrible-stuff]
   697 |     horrible = stuff;
       |                ^~~
-/path/to/file2.c:715:18: warning: just horrible stuff [-Whorrible-stuff]
+/path/to/dir2/file2.c:715:18: warning: just horrible stuff [-Whorrible-stuff]
   715 |       horrible = stuff[i];
       |                  ^~~
 ",
+        3,
     )?;
 
     let expected = make_test_warnings();
@@ -241,5 +286,20 @@ fn format_hash_map_for_files() -> Result<()> {
     let result = make_warning_counts(&counts, 2, true);
     let expected = "120  result2\n  3  result1\n     (+1 more items)\n  3  Total".to_string();
     assert_eq!(result, expected);
+    Ok(())
+}
+
+#[test]
+fn count_keywords() -> Result<()> {
+    let counts = count_warning_keywords(&make_test_warnings());
+    let expected = HashMap::from([
+        ("foo".to_string(), 2),
+        ("horrible".to_string(), 3),
+        ("stuff".to_string(), 2),
+        ("zang".to_string(), 1),
+        ("zimb".to_string(), 2),
+        ("zing".to_string(), 2),
+    ]);
+    assert_eq!(counts, expected);
     Ok(())
 }

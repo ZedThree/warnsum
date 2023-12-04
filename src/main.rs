@@ -10,6 +10,10 @@ struct Cli {
     /// Top N items to display in each category
     #[arg(short = 'n', default_value_t = 10)]
     top_n: usize,
+
+    /// Length of interesting keywords
+    #[arg(short = 'k', default_value_t = 5)]
+    keyword_len: usize,
 }
 
 #[derive(Debug)]
@@ -21,17 +25,26 @@ fn main() -> Result<()> {
     let content = std::fs::read_to_string(&args.path)
         .with_context(|| format!("could not read file `{}`", args.path.display()))?;
 
-    let warnings = warnsum::find_warnings(&content)?;
+    let warnings = warnsum::find_warnings(&content, args.keyword_len)?;
     let names = warnsum::count_warning_types(&warnings);
     let files = warnsum::count_warning_files(&warnings);
     let directories = warnsum::count_warning_directories(&warnings);
+    let keywords = warnsum::count_warning_keywords(&warnings);
 
     println!("Warnings:");
     println!("{}", warnsum::make_warning_counts(&names, 0, false));
     println!("\nFiles:");
     println!("{}", warnsum::make_warning_counts(&files, args.top_n, true));
     println!("\nDirectories:");
-    println!("{}", warnsum::make_warning_counts(&directories, args.top_n, true));
+    println!(
+        "{}",
+        warnsum::make_warning_counts(&directories, args.top_n, true)
+    );
+    println!("\nKeywords:");
+    println!(
+        "{}",
+        warnsum::make_warning_counts(&keywords, args.top_n, true)
+    );
 
     Ok(())
 }
