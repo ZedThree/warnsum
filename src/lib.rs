@@ -62,7 +62,7 @@ pub fn count_warning_directories(warnings: &[Warning]) -> HashMap<String, i16> {
     })
 }
 
-pub fn make_warning_counts(warnings: &HashMap<String, i16>) -> String {
+pub fn make_warning_counts(warnings: &HashMap<String, i16>, top_n: usize, use_total_items: bool) -> String {
     if warnings.is_empty() {
         return String::new();
     }
@@ -70,16 +70,40 @@ pub fn make_warning_counts(warnings: &HashMap<String, i16>) -> String {
     let mut count_vec: Vec<_> = warnings.iter().collect();
     count_vec.sort_by(|lhs, rhs| lhs.1.cmp(rhs.1).reverse());
 
-    let min_width = count_vec[0].1.ilog10() as usize;
+    let total: i16 = if use_total_items {
+        count_vec.len() as i16
+    } else {
+        warnings.values().sum()
+    };
+
+    let min_width = warnings.values().sum::<i16>().ilog10() as usize + 1;
 
     let mut result = Vec::new();
     for line in count_vec {
-        result.push(format!(r"{1:0$}  {2}", min_width + 1, line.1, line.0));
+        result.push(format!(r"{1:0$}  {2}", min_width, line.1, line.0));
     }
-    result.join("\n")
+
+    let max_length = if top_n == 0 {
+        result.len()
+    } else {
+        std::cmp::min(result.len(), top_n)
+    };
+    let results = result[..max_length].join("\n");
+    let total_line = format!("\n{1:0$}  Total", min_width, total);
+
+    let extra = if result.len() > top_n && top_n != 0 {
+        format!(
+            "\n{1:0$}  (+{2} more items)",
+            min_width,
+            " ",
+            result.len() - top_n
+        )
+    } else {
+        "".to_string()
+    };
+
+    results + &extra + &total_line
 }
-
-
 
 #[test]
 fn find_a_warning() -> Result<()> {
@@ -222,14 +246,29 @@ fn count_directories() -> Result<()> {
 }
 
 #[test]
-fn format_hash_map() -> Result<()> {
+fn format_hash_map_for_warnings() -> Result<()> {
     let counts = HashMap::from([
         ("result1".to_string(), 3),
         ("result2".to_string(), 120),
+        ("result3".to_string(), 1),
     ]);
 
-    let result = make_warning_counts(&counts);
-    let expected = "120  result2\n  3  result1".to_string();
+    let result = make_warning_counts(&counts, 2, false);
+    let expected = "120  result2\n  3  result1\n     (+1 more items)\n124  Total".to_string();
+    assert_eq!(result, expected);
+    Ok(())
+}
+
+#[test]
+fn format_hash_map_for_files() -> Result<()> {
+    let counts = HashMap::from([
+        ("result1".to_string(), 3),
+        ("result2".to_string(), 120),
+        ("result3".to_string(), 1),
+    ]);
+
+    let result = make_warning_counts(&counts, 2, true);
+    let expected = "120  result2\n  3  result1\n     (+1 more items)\n  3  Total".to_string();
     assert_eq!(result, expected);
     Ok(())
 }
