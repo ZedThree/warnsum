@@ -1,7 +1,7 @@
 use anyhow::Result;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::collections::HashMap;
+use std::{collections::HashMap, env::current_dir, path::PathBuf};
 
 /// A compiler warning
 #[derive(Debug, PartialEq, Clone)]
@@ -10,7 +10,7 @@ pub struct Warning {
     name: String,
 
     /// File the warning appears in
-    file: std::path::PathBuf,
+    file: PathBuf,
 
     /// Set of potentially interesting keywords from line that raised warning
     keywords: Vec<String>,
@@ -50,11 +50,16 @@ pub fn find_warnings<T: AsRef<str>>(
         .unwrap();
     }
 
+    let cwd = current_dir().unwrap_or(PathBuf::from(""));
+
     let result = WARN_RE
         .captures_iter(content)
         .map(|cap| Warning {
             name: String::from(&cap["name"]),
-            file: std::path::PathBuf::from(&cap["file"]),
+            file: {
+                let filename = PathBuf::from(&cap["file"]);
+                filename.strip_prefix(&cwd).unwrap_or(&filename).to_path_buf()
+            },
             keywords: match cap.name("text") {
                 Some(capture) => make_keywords(capture.as_str(), keyword_len, ignored_keywords),
                 _ => Vec::new(),
