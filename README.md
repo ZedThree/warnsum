@@ -1,6 +1,8 @@
 # warnsum
 
-A little helper tool for summarising compiler warnings from log files.
+A little helper tool for summarising compiler warnings from log
+files. Works on warnings generated from GCC/Clang and gfortran,
+probably not on other compilers
 
 ## Why?
 

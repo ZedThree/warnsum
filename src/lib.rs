@@ -45,7 +45,12 @@ pub fn find_warnings<T: AsRef<str>>(
 ) -> Result<Vec<Warning>> {
     lazy_static! {
         static ref WARN_RE: Regex = Regex::new(
-            r"(?P<file>.*):\d+:\d+: warning:.*\[-W(?P<name>.*)\](?P<text>\n\s+\d+ \|.*)?"
+            r"(?x)
+            (?P<file>.*):\d+:\d+:\s*                 # Filename
+            (?P<text_before>\n\n\s+\d+\ \|.*\n.*\n)? # Possible source code (gfortran)
+            [wW]arning:.*\[-W(?P<name>.*)\]          # Warning name
+            (?P<text_after>\n\s+\d+\ \|.*)?          # Possible source code (gcc/clang)
+            "
         )
         .unwrap();
     }
@@ -58,11 +63,17 @@ pub fn find_warnings<T: AsRef<str>>(
             name: String::from(&cap["name"]),
             file: {
                 let filename = PathBuf::from(&cap["file"]);
-                filename.strip_prefix(&cwd).unwrap_or(&filename).to_path_buf()
+                filename
+                    .strip_prefix(&cwd)
+                    .unwrap_or(&filename)
+                    .to_path_buf()
             },
-            keywords: match cap.name("text") {
+            keywords: match cap.name("text_after") {
                 Some(capture) => make_keywords(capture.as_str(), keyword_len, ignored_keywords),
-                _ => Vec::new(),
+                _ => match cap.name("text_before") {
+                    Some(capture) => make_keywords(capture.as_str(), keyword_len, ignored_keywords),
+                    _ => Vec::new(),
+                },
             },
         })
         .collect::<Vec<_>>();
@@ -230,6 +241,42 @@ fn find_a_warning() -> Result<()> {
 /path/to/dir2/file2.c:715:18: warning: just horrible stuff [-Whorrible-stuff]
   715 |       horrible = stuff[i];
       |                  ^~~
+",
+        3,
+        &["foo"],
+    )?;
+
+    let expected = make_test_warnings();
+    assert_eq!(result, expected);
+    Ok(())
+}
+
+#[test]
+fn find_a_warning_fortran() -> Result<()> {
+    let result = find_warnings(
+        "Some warnings
+[  1%] Generating file1.c
+[  2%] Generating file2.c
+/path/to/dir1/file1.c:235:36:
+
+  235 |     if (horrible) *foo = zing->zimb;
+      |                                1
+Warning: doing some bad thing [-Wbad-thing]
+/path/to/dir2/file1.c:340:27:
+
+  340 |     zing->zimb &= (~foo.zang);
+      |                     ^
+Warning: don't like this [-Wdont-like-this]
+/path/to/dir2/file2.c:697:16:
+
+  697 |     horrible = stuff;
+      |                ^~~
+Warning: just horrible stuff [-Whorrible-stuff]
+/path/to/dir2/file2.c:715:18:
+
+  715 |       horrible = stuff[i];
+      |                  ^~~
+Warning: just horrible stuff [-Whorrible-stuff]
 ",
         3,
         &["foo"],
