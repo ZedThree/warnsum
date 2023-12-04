@@ -3,7 +3,6 @@ use assert_fs::prelude::*;
 use predicates::prelude::*;
 use std::process::Command;
 
-
 #[test]
 fn file_doesnt_exist() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("warnsum")?;
@@ -19,7 +18,8 @@ fn file_doesnt_exist() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn find_content_in_file() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("sample.txt")?;
-    file.write_str("Some warnings
+    file.write_str(
+        "Some warnings
 [  1%] Generating file1.c
 [  2%] Generating file2.c
 /path/to/file1.c: In function ‘func1’:
@@ -37,7 +37,8 @@ fn find_content_in_file() -> Result<(), Box<dyn std::error::Error>> {
 /path/to/file2.c:715:18: warning: just horrible stuff [-Whorrible-stuff]
   715 |       horrible = stuff[i];
       |                  ^~~
-")?;
+",
+    )?;
 
     let mut cmd = Command::cargo_bin("warnsum")?;
     cmd.arg(file.path());
