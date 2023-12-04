@@ -16,7 +16,11 @@ pub struct Warning {
     keywords: Vec<String>,
 }
 
-fn make_keywords(text: &str, keyword_len: usize) -> Vec<String> {
+fn make_keywords<T: AsRef<str>>(
+    text: &str,
+    keyword_len: usize,
+    ignored_keywords: &[T],
+) -> Vec<String> {
     lazy_static! {
         static ref WORDS_RE: Regex = Regex::new(r"\b[a-zA-Z_]\w+\b").unwrap();
     }
@@ -24,11 +28,21 @@ fn make_keywords(text: &str, keyword_len: usize) -> Vec<String> {
     WORDS_RE
         .find_iter(text)
         .filter(|mat| mat.as_str().len() >= keyword_len)
-        .map(|mat| mat.as_str().to_string())
+        .map(|mat| mat.as_str())
+        .filter(|&word| {
+            !ignored_keywords
+                .iter()
+                .any(|ignore| ignore.as_ref() == word)
+        })
+        .map(|word| word.to_string())
         .collect()
 }
 
-pub fn find_warnings(content: &str, keyword_len: usize) -> Result<Vec<Warning>> {
+pub fn find_warnings<T: AsRef<str>>(
+    content: &str,
+    keyword_len: usize,
+    ignored_keywords: &[T],
+) -> Result<Vec<Warning>> {
     lazy_static! {
         static ref WARN_RE: Regex = Regex::new(
             r"(?P<file>.*):\d+:\d+: warning:.*\[-W(?P<name>.*)\](?P<text>\n\s+\d+ \|.*)?"
@@ -42,7 +56,7 @@ pub fn find_warnings(content: &str, keyword_len: usize) -> Result<Vec<Warning>> 
             name: String::from(&cap["name"]),
             file: std::path::PathBuf::from(&cap["file"]),
             keywords: match cap.name("text") {
-                Some(capture) => make_keywords(capture.as_str(), keyword_len),
+                Some(capture) => make_keywords(capture.as_str(), keyword_len, ignored_keywords),
                 _ => Vec::new(),
             },
         })
@@ -167,12 +181,12 @@ fn make_test_warnings() -> Vec<Warning> {
             Warning {
                 file: std::path::PathBuf::from("/path/to/dir1/file1.c"),
                 name: String::from("bad-thing"),
-                keywords: vec_of_strings!["horrible", "foo", "zing", "zimb"],
+                keywords: vec_of_strings!["horrible", "zing", "zimb"],
             },
             Warning {
                 file: std::path::PathBuf::from("/path/to/dir2/file1.c"),
                 name: String::from("dont-like-this"),
-                keywords: vec_of_strings!["zing", "zimb", "foo", "zang"],
+                keywords: vec_of_strings!["zing", "zimb", "zang"],
             },
             Warning {
                 file: std::path::PathBuf::from("/path/to/dir2/file2.c"),
@@ -213,6 +227,7 @@ fn find_a_warning() -> Result<()> {
       |                  ^~~
 ",
         3,
+        &["foo"],
     )?;
 
     let expected = make_test_warnings();
@@ -293,7 +308,6 @@ fn format_hash_map_for_files() -> Result<()> {
 fn count_keywords() -> Result<()> {
     let counts = count_warning_keywords(&make_test_warnings());
     let expected = HashMap::from([
-        ("foo".to_string(), 2),
         ("horrible".to_string(), 3),
         ("stuff".to_string(), 2),
         ("zang".to_string(), 1),

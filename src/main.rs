@@ -12,8 +12,12 @@ struct Cli {
     top_n: usize,
 
     /// Length of interesting keywords
-    #[arg(short = 'k', default_value_t = 5)]
+    #[arg(short, default_value_t = 5)]
     keyword_len: usize,
+
+    /// Keywords to ignore from warnings
+    #[arg(short, long, num_args = 1.., value_delimiter = ' ')]
+    ignore: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -25,7 +29,7 @@ fn main() -> Result<()> {
     let content = std::fs::read_to_string(&args.path)
         .with_context(|| format!("could not read file `{}`", args.path.display()))?;
 
-    let warnings = warnsum::find_warnings(&content, args.keyword_len)?;
+    let warnings = warnsum::find_warnings(&content, args.keyword_len, &args.ignore)?;
     let names = warnsum::count_warning_types(&warnings);
     let files = warnsum::count_warning_files(&warnings);
     let directories = warnsum::count_warning_directories(&warnings);
