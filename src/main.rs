@@ -16,6 +16,7 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use warnsum::WarningCollection;
 
 /// Summarise compiler warnings from log file
 #[derive(Parser, Debug)]
@@ -45,26 +46,9 @@ fn main() -> Result<()> {
     let content = std::fs::read_to_string(&args.path)
         .with_context(|| format!("could not read file `{}`", args.path.display()))?;
 
-    let warnings = warnsum::find_warnings(&content, args.keyword_len, &args.ignore)?;
-    let names = warnsum::count_warning_types(&warnings);
-    let files = warnsum::count_warning_files(&warnings);
-    let directories = warnsum::count_warning_directories(&warnings);
-    let keywords = warnsum::count_warning_keywords(&warnings);
+    let warnings = WarningCollection::new(&content, args.keyword_len, &args.ignore);
 
-    println!("Warnings:");
-    println!("{}", warnsum::make_warning_counts(&names, 0, false));
-    println!("\nFiles:");
-    println!("{}", warnsum::make_warning_counts(&files, args.top_n, true));
-    println!("\nDirectories:");
-    println!(
-        "{}",
-        warnsum::make_warning_counts(&directories, args.top_n, true)
-    );
-    println!("\nKeywords:");
-    println!(
-        "{}",
-        warnsum::make_warning_counts(&keywords, args.top_n, true)
-    );
+    println!("{warnings:.width$}", width = &args.top_n);
 
     Ok(())
 }
