@@ -1,7 +1,7 @@
 use core::fmt;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::{collections::HashMap, env::current_dir, path::Path, path::PathBuf};
+use std::{collections::HashMap, env::current_dir, hash::Hash, path::Path, path::PathBuf};
 
 /// A compiler warning
 #[derive(Debug, PartialEq, Clone)]
@@ -100,6 +100,24 @@ fn count_warning_keywords(warnings: &[Warning]) -> HashMap<String, i16> {
     result
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct CountDiff(i16);
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct WarningCollectionDiff {
+    /// Mapping of warning names to counts
+    names: HashMap<String, i16>,
+
+    /// Mapping of filenames to counts
+    files: HashMap<PathBuf, i16>,
+
+    /// Mapping of directory names to counts
+    directories: HashMap<PathBuf, i16>,
+
+    /// Mapping of keywords to counts
+    keywords: HashMap<String, i16>,
+}
+
 impl WarningCollection {
     pub fn new<T: AsRef<str>>(
         content: &str,
@@ -156,6 +174,28 @@ impl WarningCollection {
             keywords,
         }
     }
+
+    pub fn diff(&self, other: &WarningCollection) -> WarningCollectionDiff {
+        WarningCollectionDiff {
+            names: diff_hashmaps(&self.names, &other.names),
+            files: diff_hashmaps(&self.files, &other.files),
+            directories: diff_hashmaps(&self.directories, &other.directories),
+            keywords: diff_hashmaps(&self.keywords, &other.keywords),
+        }
+    }
+}
+
+fn diff_hashmaps<T>(lhs: &HashMap<T, i16>, rhs: &HashMap<T, i16>) -> HashMap<T, i16>
+where
+    T: Eq + Hash + Clone,
+{
+    let mut result = lhs.clone();
+
+    for (name, count) in rhs.iter() {
+        *result.entry(name.clone()).or_default() -= count;
+    }
+    result.retain(|_, &mut value| value != 0);
+    result
 }
 
 impl fmt::Display for WarningCollection {
@@ -393,5 +433,53 @@ fn format_hash_map_for_files() {
 
     let result = make_warning_counts(&counts, 2, true);
     let expected = "120  result2\n  3  result1\n     (+1 more items)\n  3  Total".to_string();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn warning_diff() {
+    let new_warnings = WarningCollection {
+        warnings: Vec::from([
+            Warning {
+                file: std::path::PathBuf::from("/path/to/dir1/file1.c"),
+                name: String::from("bad-thing"),
+                keywords: vec_of_strings!["horrible", "zing", "zimb"],
+            },
+            Warning {
+                file: std::path::PathBuf::from("/path/to/dir2/file1.c"),
+                name: String::from("dont-like-this"),
+                keywords: vec_of_strings!["zing", "zimb", "zang"],
+            },
+        ]),
+        names: HashMap::from([
+            ("bad-thing".to_string(), 1),
+            ("dont-like-this".to_string(), 1),
+        ]),
+        files: HashMap::from([
+            (PathBuf::from("/path/to/dir1/file1.c"), 1),
+            (PathBuf::from("/path/to/dir2/file1.c"), 1),
+        ]),
+        directories: HashMap::from([
+            (PathBuf::from("/path/to/dir1"), 1),
+            (PathBuf::from("/path/to/dir2"), 1)
+        ]),
+        keywords: HashMap::from([
+            ("horrible".to_string(), 1),
+            ("zang".to_string(), 1),
+            ("zimb".to_string(), 2),
+            ("zing".to_string(), 2),
+        ])
+    };
+    let result = new_warnings.diff(&TEST_WARNINGS);
+
+    let expected = WarningCollectionDiff {
+        names: HashMap::from([
+            ("horrible-stuff".to_string(), -2)]),
+        files: HashMap::from([
+            (PathBuf::from("/path/to/dir2/file2.c"), -2)]),
+        directories: HashMap::from([(PathBuf::from("/path/to/dir2"), -2)]),
+        keywords: HashMap::from([("horrible".to_string(), -2), ("stuff".to_string(), -2)])
+    };
+
     assert_eq!(result, expected);
 }
