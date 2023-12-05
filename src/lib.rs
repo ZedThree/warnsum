@@ -239,44 +239,40 @@ fn make_warning_counts<T: AsRef<Path>>(
     let mut count_vec: Vec<_> = warnings.iter().collect();
     count_vec.sort_by(|lhs, rhs| lhs.1.cmp(rhs.1).reverse());
 
-    let total: i16 = if use_total_items {
-        count_vec.len() as i16
+    let max_length = if top_n == 0 {
+        count_vec.len()
     } else {
-        warnings.values().sum()
+        std::cmp::min(count_vec.len(), top_n)
     };
 
     let min_width = warnings.values().sum::<i16>().ilog10() as usize + 1;
 
-    let mut result = Vec::new();
-    for line in count_vec {
-        result.push(format!(
+    let result = count_vec.iter().take(max_length).map(|line|
+        format!(
             r"{1:0$}  {2}",
             min_width,
             line.1,
             line.0.as_ref().display()
-        ));
-    }
-
-    let max_length = if top_n == 0 {
-        result.len()
-    } else {
-        std::cmp::min(result.len(), top_n)
-    };
-    let results = result[..max_length].join("\n");
-    let total_line = format!("\n{1:0$}  Total", min_width, total);
-
-    let extra = if result.len() > top_n && top_n != 0 {
+        )).fold(String::default(), |acc, line| format!("{acc}{line}\n"));
+    let extra = if count_vec.len() > top_n && top_n != 0 {
         format!(
-            "\n{1:0$}  (+{2} more items)",
+            "{1:0$}  (+{2} more items)\n",
             min_width,
             " ",
-            result.len() - top_n
+            count_vec.len() - top_n
         )
     } else {
         "".to_string()
     };
 
-    results + &extra + &total_line
+    let total: i16 = if use_total_items {
+        count_vec.len() as i16
+    } else {
+        warnings.values().sum()
+    };
+    let total_line = format!("{1:0$}  Total", min_width, total);
+
+    result + &extra + &total_line
 }
 
 // Helper function from https://stackoverflow.com/a/45145246
