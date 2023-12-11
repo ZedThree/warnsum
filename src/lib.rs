@@ -231,13 +231,22 @@ fn make_warning_counts<T: AsRef<Path>>(
     warnings: &HashMap<T, i16>,
     top_n: usize,
     use_total_items: bool,
-) -> String {
+) -> String
+where
+    T: Eq + Ord,
+{
     if warnings.is_empty() {
         return String::new();
     }
 
     let mut count_vec: Vec<_> = warnings.iter().collect();
-    count_vec.sort_by(|lhs, rhs| lhs.1.cmp(rhs.1).reverse());
+    count_vec.sort_by(|lhs, rhs| {
+        if lhs.1 == rhs.1 {
+            lhs.0.cmp(rhs.0)
+        } else {
+            lhs.1.cmp(rhs.1).reverse()
+        }
+    });
 
     let max_length = if top_n == 0 {
         count_vec.len()
