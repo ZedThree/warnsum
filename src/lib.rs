@@ -247,13 +247,11 @@ fn make_warning_counts<T: AsRef<Path>>(
 
     let min_width = warnings.values().sum::<i16>().ilog10() as usize + 1;
 
-    let result = count_vec.iter().take(max_length).map(|line|
-        format!(
-            r"{1:0$}  {2}",
-            min_width,
-            line.1,
-            line.0.as_ref().display()
-        )).fold(String::default(), |acc, line| format!("{acc}{line}\n"));
+    let result = count_vec
+        .iter()
+        .take(max_length)
+        .map(|line| format!(r"{1:0$}  {2}", min_width, line.1, line.0.as_ref().display()))
+        .fold(String::default(), |acc, line| format!("{acc}{line}\n"));
     let extra = if count_vec.len() > top_n && top_n != 0 {
         format!(
             "{1:0$}  (+{2} more items)\n",
@@ -457,24 +455,22 @@ fn warning_diff() {
         ]),
         directories: HashMap::from([
             (PathBuf::from("/path/to/dir1"), 1),
-            (PathBuf::from("/path/to/dir2"), 1)
+            (PathBuf::from("/path/to/dir2"), 1),
         ]),
         keywords: HashMap::from([
             ("horrible".to_string(), 1),
             ("zang".to_string(), 1),
             ("zimb".to_string(), 2),
             ("zing".to_string(), 2),
-        ])
+        ]),
     };
     let result = new_warnings.diff(&TEST_WARNINGS);
 
     let expected = WarningCollectionDiff {
-        names: HashMap::from([
-            ("horrible-stuff".to_string(), -2)]),
-        files: HashMap::from([
-            (PathBuf::from("/path/to/dir2/file2.c"), -2)]),
+        names: HashMap::from([("horrible-stuff".to_string(), -2)]),
+        files: HashMap::from([(PathBuf::from("/path/to/dir2/file2.c"), -2)]),
         directories: HashMap::from([(PathBuf::from("/path/to/dir2"), -2)]),
-        keywords: HashMap::from([("horrible".to_string(), -2), ("stuff".to_string(), -2)])
+        keywords: HashMap::from([("horrible".to_string(), -2), ("stuff".to_string(), -2)]),
     };
 
     assert_eq!(result, expected);
