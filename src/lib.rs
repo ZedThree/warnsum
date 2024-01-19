@@ -129,7 +129,7 @@ impl WarningCollection {
                 r"(?x)
             (?P<file>.*):\d+:\d+:\s*                 # Filename
             (?P<text_before>\n\n\s+\d+\ \|.*\n.*\n)? # Possible source code (gfortran)
-            [wW]arning:.*\[-W(?P<name>.*)\]          # Warning name
+            [wW]arning:.*\[(-W)?(?P<name>.*)\]       # Warning name
             (?P<text_after>\n\s+\d+\ \|.*)?          # Possible source code (gcc/clang)
             "
             )
